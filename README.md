@@ -5,13 +5,12 @@
 Houses weekly in class labs and discussions for EDS 223
 
 ## Structure
-
+```
 .
-
-├── discussions
+├── discussions  
 ├── labs
 └── README.md
-
+```
 ## Data Access
 
 All data is found on the [course website](https://eds-223-geospatial.github.io/)
