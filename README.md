@@ -7,6 +7,7 @@ Houses weekly in class labs and discussions for EDS 223
 ## Structure
 
 .
+
 ├── discussions
 ├── labs
 └── README.md
