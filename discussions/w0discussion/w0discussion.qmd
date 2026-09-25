@@ -1,0 +1,96 @@
+# Week 0 Discussion: Data wrangling refresher
+Emalia Partlow
+```{r}
+packages <- c("here", "janitor", "tidyverse", "sf", "terra", "tmap", "spData", "spDataLarge", "geodata", "kableExtra", "viridisLite")
+installed_packages <- packages %in% rownames(installed.packages())
+
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+```
+
+```{r}
+library(here) # Find files and folders within directory
+library(janitor) # Clean and standardize col names
+library(tidyverse) # Import, manipulate, summarize, and visualize data
+library(sf) # Work with spatial and geo data
+library(kableExtra) # Create nicely formatted tables
+```
+
+## Load data
+```{r}
+gdw_df <- read_csv(here("discussions", "w0discussion", "data", "gdw.csv")) |> # Read in csv file
+  clean_names() # Convert variable names to lower snake case
+```
+
+```{r}
+head(gdw_df, n = 5) |> 
+  kable()|> 
+  kable_styling()
+
+tail(gdw_df, n = 5) |> 
+  kable() |> 
+  kable_styling()
+```
+
+```{r}
+dim(gdw_df)
+nrow(gdw_df)
+ncol(gdw_df)
+```
+
+```{r}
+names(gdw_df)
+```
+
+```{r}
+country_df <- gdw_df[, "country"] # Save all rows for the country column as a new df
+country_vec <- gdw_df[["country"]] # Save country column as a vector
+```
+
+```{r}
+# Find number of dams by dam type
+gdw_df |> 
+  group_by(dam_type) |>
+  summarise(count = n()) |>
+  ungroup()
+```
+
+```{r}
+# Subset to 1 dam type
+sub_dam <- gdw_df |>
+  filter(dam_type == "Dam")
+sub_dam
+```
+
+```{r}
+# Ascending order of installation year
+gdw_df <- gdw_df |>
+  arrange(year_dam) 
+```
+
+```{r}
+# Bar graph of average height of dam/barrier in meters (dam_hgt_m) by country
+
+gdw_df |>
+  group_by(country) |>
+  summarize(mean_dam_hgt_m = mean(dam_hgt_m, na.rm = TRUE)) |>
+  ungroup() |> 
+  ggplot(aes(x = country, y = mean_dam_hgt_m)) +
+    geom_bar(stat = "identity") +
+    labs(x = "Country",
+         y = "Average height of dam/barrier in meters") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+```
+
+```{r}
+# Scatterplot of height of dam/barrier versus representative maximum storage capacity of reservoir in million cubic meters (cap_mcm)
+
+ggplot(data = gdw_df,
+      aes(x = cap_mcm, y = dam_hgt_m)) +
+  geom_point() +
+  labs(x = "Storage capacity of reservoir in million cubic meters",
+       y = "Height of dam/barrier in meters") +
+  theme_minimal()
+```
