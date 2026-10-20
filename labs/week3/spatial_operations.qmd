@@ -753,7 +753,7 @@ We may also want to simplify a `geometry` to make it easier to plot or take up l
 
 Let's see an example!
 ```{r}
-seine_simple <- st_simplify(seine, dTolerance = 2000)  # 2000 m
+seine_simple <- st_simplify(seine, dTolerance = 2000)  # 2000 m. How far away we care about 
 ```
 
 ```{r}
