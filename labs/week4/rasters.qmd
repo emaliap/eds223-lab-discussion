@@ -204,6 +204,10 @@ For multi-layer rasters, subsetting returns the values in both layers.
 landsat[1] # Returns cell ID 1 for all 4 layers
 ```
 
+```{r}
+landsat[1][2] # First cell value of layer 2
+```
+
 We can also modify/overwrite cell values.
 
 ```{r}
@@ -239,16 +243,37 @@ We can move from subsetting based on specific cell IDs to extract info based on 
 To use coordinates for subsetting, we can "translate" coordinates into a cell ID with the functions `terra::cellFromXY()` or `terra::extract()`.
 
 ```{r}
+# create point within area covered by raster
+point <- matrix(c(-113, 37.5), ncol = 2) # use lat/long
 
+# approach 1
+# find cell ID for point
+id <- cellFromXY(zion_elevation, xy = point) # xy needs to be a matrix
+# index to cell
+zion_elevation[id]
 
+# approach 2
+# extract raster values at point
+terra::extract(zion_elevation, point)
 ```
 
 We can also subset raster objects based on the extent another raster object. Here we extract the values of our elevation raster that fall within the extent of a clipping raster that we create.
 
 ```{r}
+# create a raster with a smaller extent
+clip <- rast(xmin = -113.3, xmax = -113, ymin = 37.2, ymax = 37.9, # lat/long
+            resolution = 0.3, # in units of crs, so in degrees
+            vals = 1) # give every cell in raster a value of 1
 
+# select values that fall within smaller extent
+zion_elevation_clip <- zion_elevation[clip] # returns a dataframe, not a raster, so need to get back the spatial component
 
-
+# verify that output has fewer values than original
+if(ncell(zion_elevation) == ncell(zion_elevation_clip)) {
+  warning("clipping did not remove cells")
+} else {
+  print("clipping removed cells")
+}
 ```
 
 
@@ -257,8 +282,8 @@ In the previous example, we just got the values of the raster back (and lost the
 We can do this use the "[" operator and setting "drop = FALSE".
 
 ```{r}
-
-
+# return a spatial raster
+zion_elevation_clip <- zion_elevation[clip, drop = FALSE]
 ```
 
 ```{r}
@@ -285,8 +310,12 @@ Plotting side-by-side, the clipped version appears to take up more space -- does
 
 
 ```{r}
-
-
+# check if extents match
+if(ext(zion_elevation) == ext(zion_elevation_clip)){ 
+  print("extents match")
+} else{
+  print("extents do not match")
+}
 ```
 
 :::
@@ -294,9 +323,19 @@ Plotting side-by-side, the clipped version appears to take up more space -- does
 In the previous example, we subsetted the extent of the raster (removed cells). Another common use of spatial subsetting is to select cells based on their values. In this case we create a "masking" raster comprised of logicals or NAs that dictates the cells we would like to preserve.
 
 ```{r}
+# create raster mask of the same resolution and extent
+rmask <- zion_elevation
 
-     
+# set all cells with elevation less than 2000 meters to NA, in order to keep all cells with elevation > 2000 in next step
+rmask[rmask < 2000] <- NA
+ 
+# subset elevation raster based on mask to values that are not NA, filtering for TRUE
 
+# approach 1: bracket subsetting
+masked1 <- zion_elevation[rmask, drop = FALSE] # drop = FALSE retuns raster, not just values
+
+# approach 2: mask() function
+masked2 <- mask(zion_elevation, rmask) # mask to rmask     
 ```
 
 ```{r}
@@ -324,8 +363,10 @@ tmap_arrange(map1, map2, map3, nrow = 1)
 Local operations are computed on each cell individually. For example, we can use ordinary arithmetic or logical statements.
 
 ```{r}
-
-
+zion_elevation + zion_elevation # doubles each cells' value
+zion_elevation^2 # raises each cells' value to the power of 2
+log(zion_elevation) # takes the log of each cells' value
+zion_elevation > 5 # determines whether each cell has a value greater than 5
 ```
 
 We can also classify intervals of values into groups. For example, we could classify elevation into low, middle, and high elevation cells.
@@ -337,8 +378,19 @@ First, we need to construct a reclassification matrix:
   - The third column corresponds to the new value for the specified ranges in columns 1 and 2
 
 ```{r}
+# create reclassification matrix, doesn't have spatial component
+rcl <- matrix(c(1000, 1500, 1, # group 1 ranges from 1000 - 1500 m
+                1500, 2000, 2, # group 2 ranges from 1500 - 2000 m
+                2000, 2500, 3, # group 3 ranges from 2000 - 2500 m
+                2500, 3000, 4), # group 4 ranges from 2500 - 3000 m
+                ncol = 3, byrow = TRUE) # populating by row. if false populates by column
 
+# use reclassification matrix to reclassify elevation raster
+reclassified <- classify(zion_elevation, rcl = rcl)
 
+# change reclassified values into factors, so they aren't integers
+values(reclassified) <- as.factor(values(reclassified))
+summary(reclassified) # anything doesn't fall in classes made will be printed above
 ```
 
 ```{r}
@@ -353,7 +405,6 @@ map2 <- tm_shape(reclassified) +
 
 
 tmap_arrange(map1, map2, nrow = 1) 
-
 ```
 
 
@@ -368,19 +419,27 @@ We can use the `lapp()`function to compute the Normalized Difference Vegetation 
 First, we need to define a function to calculate NDVI. Then, we can use `lapp()` to calculate NDVI in each raster cell. To do so, we just need the NIR and red bands.
 
 ```{r}
+# define NDVI as the normalized difference between NIR and red bands
+ndvi_fun <- function(nir, red){ # 2 layers
+  (nir - red) / (nir + red) # formula to compute the Normalized Difference Vegetation Index
+}
 
-
+# apply NDVI function across layers
+ndvi_rast <- lapp(landsat[[c(4, 3)]], fun = ndvi_fun) # 4 is nir layer and 3 is red layer, so need in order. double brackets access layers
 ```
 
 ```{r}
-
-
+tm_shape(ndvi_rast) +
+  tm_raster(col.legend = tm_legend(title = "NDVI"))
 ```
 
 ### Focal Operations
 Local operations operate on one cell, though from multiple layers. Focal operations take into account a central (focal) cell and its neighbors. The neighborhood (or kernel, moving window, filter) can take any size or shape. A focal operation applies an aggregation function to all cells in the neighborhood and updates the value of the central cell before moving on to the next central cell.
 
 The image below provides an example of using a moving window filter. The large orange square highlights the 8 cells that are considered "neighbors" to the central cell (value = 8). Using this approach, the value of the central cell will be updated to the minimum value of its neighboring cells (in this case 0). This process then repeats for each cell.
+
+Why are the cells on the border in the filtered raster now have values of NA?
+The cells along the border do not have a complete set of “neighbors”, therefore the filtering operation returns a NA.
 
 
 ::: {.gray-text .center-text}
@@ -391,8 +450,9 @@ The image below provides an example of using a moving window filter. The large o
 We can use the `focal()` function to perform spatial filtering. We define the size, shape, and weights of the moving window using a matrix. In the following example we'll find the minimum value in 9x9 cell neighborhoods.
 
 ```{r}
-
-
+elevation_focal <- focal(zion_elevation, 
+                         w = matrix(1, nrow = 9, ncol = 9), # create moving window, has to have odd dimensions so that there is a center cell
+                         fun = min) # function to map new values
 ```
 
 ```{r}
@@ -407,7 +467,6 @@ map2 <- tm_shape(elevation_focal) +
 
 
 tmap_arrange(map1, map2, nrow = 1) 
-
 ```
 
 :::{.callout-tip icon=true collapse=true}
@@ -426,8 +485,9 @@ Similar to focal operations, zonal operations apply an aggregation function to m
 For example, we could find the average elevation within the elevations zones we created.
 
 ```{r}
-
-
+zonal(zion_elevation, reclassified, fun = "mean") |> # take average elevation of 4 zones
+  kable(col.names = c("Elevation zone", "Mean elevation (m)")) |> 
+  kable_styling(bootstrap_options = "striped") # colors every other row light/dark
 ```
 
 
@@ -440,19 +500,31 @@ When merging or performing map algebra, rasters need to match in their resolutio
 In the simplest case, two images differ only in their extent. Let's start by increasing the extent of a elevation raster.
 
 ```{r}
+elev_2 <- extend(zion_elevation, c(1, 2)) # add one row and two columns to extend. adds to bottom and top
 
+# custom extend
+current_ext <- ext(zion_elevation)
+
+new_ext <- ext(
+  xmin(zion_elevation),
+  xmax(zion_elevation),
+  ymin(zion_elevation) - yres(zion_elevation), # adds 1 row to the bottom
+  ymax(zion_elevation)
+)
+
+elev_3 <- extend(zion_elevation, new_ext)
 ```
 
 Performing algebraic operations on objects with different extents doesn't work.
 
 ```{r}
-
+elev + elev_2
 ```
 
 We can align the extent of the 2 rasters using the `extend()` function. Here we extend the `zion_elevation` object to the extent of elev_2 by adding NAs.
 
 ```{r}
-
+elev_3 <- extend(zion_elevation, elev_2)
 ```
 
 ### Origin
@@ -460,7 +532,7 @@ The origin function returns the coordinates of the cell corner closes to the coo
 
 ```{r}
 
-
+origin(zion_elevation)
 ```
 
 ### Resolution
@@ -470,7 +542,7 @@ Raster datasets can also differ in their resolution. To match resolutions we can
 When decreasing the resolution of rasters, we are effectively combining multiple cells into a single cell. Let's start by coarsening the resolution of the Zion elevation data by a factor of 5, by taking the mean value of cells.
 
 ```{r}
-
+zion_elevation_coarse <-  aggregate(zion_elevation, fact = 5, fun = mean)
 ```
 
 ```{r}
